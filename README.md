@@ -38,6 +38,36 @@ end
 Tend.capture_message("payment partial failure", level: "warning", extra: { order_id: 42 })
 ```
 
+## User attribution
+
+Attach a `user` object to every captured event so Tend can attribute errors to a specific user. Three APIs:
+
+- `Tend.set_user(id:, email:, **extras)` — sets the process-wide user (stored on `configuration.user`). Useful for single-tenant processes / scripts.
+- `Tend.with_user(id:, email:, **extras) { ... }` — sets a thread-local user for the duration of the block, then restores the prior value. Use this in request-scoped code (Rails around_action, Sidekiq middleware, etc.) so concurrent requests don't bleed.
+- `Tend.clear_user` — clears the global user. Does not touch the thread-local.
+
+Resolution order on each event: `Thread.current[:tend_user]` → `configuration.user` → omitted.
+
+### Rails: per-request user via `around_action`
+
+```ruby
+class ApplicationController < ActionController::Base
+  around_action :tend_user_context
+
+  def tend_user_context
+    if Current.user
+      Tend.with_user(id: Current.user.id, email: Current.user.email) { yield }
+    else
+      yield
+    end
+  end
+end
+```
+
+This wraps each action so any error reported via `Rails.error.report` (the Railtie's error subscriber path) sees the current user. Note: the Rack middleware path catches *re-raised* exceptions after the around_action has unwound — so middleware-time captures see the global `configuration.user`, not the thread-local. For middleware-time attribution, either set the user globally with `Tend.set_user` or wrap `Tend::Middleware` in a Rack middleware that sets `Thread.current[:tend_user]` itself.
+
+Extras passed to `set_user`/`with_user` are included in the user object as-is — keep them JSON-safe primitives.
+
 ## Configuration reference
 
 | Option | Default | Notes |
@@ -50,6 +80,7 @@ Tend.capture_message("payment partial failure", level: "warning", extra: { order
 | `before_send` | identity | Lambda; return `nil` to drop event. |
 | `ignored_exceptions` | Common Rails noise | Class names matched against ancestor chain. |
 | `logger` | `Rails.logger` or `Logger.new($stdout)` | SDK warnings go here. |
+| `user` | `nil` | Process-wide user hash sent with every event. Prefer `Tend.set_user` / `Tend.with_user`. |
 
 ## Non-Rails Rack apps
 

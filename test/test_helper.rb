@@ -13,6 +13,7 @@ module TendTestHelpers
     Tend.reset_configuration!
     Tend::Transport.reset!
     Tend::Transport.synchronous = true
+    Thread.current[:tend_user] = nil
     Tend.configure do |c|
       c.ingest_token = token
       c.logger = logger || Logger.new(StringIO.new)
