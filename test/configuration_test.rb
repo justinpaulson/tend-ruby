@@ -18,6 +18,11 @@ class ConfigurationTest < Minitest::Test
     refute cfg.valid?, "no token => invalid"
   end
 
+  def test_user_default_is_nil
+    cfg = Tend::Configuration.new
+    assert_nil cfg.user
+  end
+
   def test_configure_with_token
     Tend.configure { |c| c.ingest_token = "tok" }
     assert Tend.configuration.valid?

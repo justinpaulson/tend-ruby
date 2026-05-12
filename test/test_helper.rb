@@ -24,6 +24,7 @@ module TendTestHelpers
     Tend::Transport.reset!
     Tend::Transport.synchronous = false
     Tend.reset_configuration!
+    Thread.current[:tend_user] = nil
     super
   end
 end

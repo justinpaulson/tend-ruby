@@ -22,6 +22,7 @@ module Tend
         sdk_version: "tend-ruby/#{Tend::VERSION}",
         url: env ? build_url(env) : nil,
         user_agent: env ? env["HTTP_USER_AGENT"] : nil,
+        user: resolve_user(configuration),
         tags: build_tags(configuration: configuration, extra: extra, env: env)
       }
       base.compact
@@ -36,8 +37,13 @@ module Tend
         release: configuration.release,
         environment: configuration.environment,
         sdk_version: "tend-ruby/#{Tend::VERSION}",
+        user: resolve_user(configuration),
         tags: build_tags(configuration: configuration, extra: extra, env: nil)
       }.compact
+    end
+
+    def resolve_user(configuration)
+      Thread.current[:tend_user] || configuration.user
     end
 
     def build_tags(configuration:, extra:, env:)

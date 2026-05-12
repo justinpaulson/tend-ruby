@@ -87,6 +87,33 @@ class PayloadBuilderTest < Minitest::Test
     assert_equal "bar", payload[:tags]["foo"]
   end
 
+  def test_payload_omits_user_when_unset
+    e = build_exception
+    payload = Tend::PayloadBuilder.from_exception(e, configuration: Tend.configuration, extra: {}, env: nil)
+    refute payload.key?(:user)
+  end
+
+  def test_payload_includes_configuration_user
+    Tend.configuration.user = { id: "u1", email: "x@y.com" }
+    e = build_exception
+    payload = Tend::PayloadBuilder.from_exception(e, configuration: Tend.configuration, extra: {}, env: nil)
+    assert_equal({ id: "u1", email: "x@y.com" }, payload[:user])
+  end
+
+  def test_payload_thread_local_overrides_configuration_user
+    Tend.configuration.user = { id: "global", email: "g@x" }
+    Thread.current[:tend_user] = { id: "local", email: "l@x" }
+    e = build_exception
+    payload = Tend::PayloadBuilder.from_exception(e, configuration: Tend.configuration, extra: {}, env: nil)
+    assert_equal({ id: "local", email: "l@x" }, payload[:user])
+  end
+
+  def test_from_message_includes_user
+    Tend.configuration.user = { id: "u1", email: "x@y.com" }
+    payload = Tend::PayloadBuilder.from_message("hi", configuration: Tend.configuration)
+    assert_equal({ id: "u1", email: "x@y.com" }, payload[:user])
+  end
+
   private
 
   def build_exception(message: "boom", backtrace: ["/some/path.rb:1:in `do_thing'"])

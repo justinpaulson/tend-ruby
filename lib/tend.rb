@@ -24,6 +24,22 @@ module Tend
       @configuration = nil
     end
 
+    def set_user(id:, email:, **extras)
+      configuration.user = { id: id, email: email }.merge(extras)
+    end
+
+    def clear_user
+      configuration.user = nil
+    end
+
+    def with_user(id:, email:, **extras)
+      prior = Thread.current[:tend_user]
+      Thread.current[:tend_user] = { id: id, email: email }.merge(extras)
+      yield
+    ensure
+      Thread.current[:tend_user] = prior
+    end
+
     def capture_exception(exception, extra: {}, env: nil)
       return unless configuration.valid?
       return if ignored?(exception)
