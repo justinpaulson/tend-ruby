@@ -105,4 +105,48 @@ class TendTest < Minitest::Test
       true
     end
   end
+
+  def test_capture_exception_marks_chain_after_event_is_accepted
+    stub_request(:post, URL).to_return(status: 202, body: "{}")
+    err = RuntimeError.new("boom")
+
+    Tend::RequestContext.with_env({}) do
+      Tend.capture_exception(err)
+      assert Tend::RequestContext.captured?(err)
+    end
+  end
+
+  def test_capture_exception_does_not_mark_when_before_send_drops_event
+    stub_request(:post, URL).to_return(status: 202, body: "{}")
+    Tend.configuration.before_send = ->(_payload) { nil }
+    err = RuntimeError.new("boom")
+
+    Tend::RequestContext.with_env({}) do
+      Tend.capture_exception(err)
+      refute Tend::RequestContext.captured?(err)
+    end
+
+    refute_requested(:post, URL)
+  end
+
+  def test_capture_exception_can_be_called_twice_manually
+    stub_request(:post, URL).to_return(status: 202, body: "{}")
+    err = RuntimeError.new("boom")
+
+    Tend.capture_exception(err)
+    Tend.capture_exception(err)
+
+    assert_requested(:post, URL, times: 2)
+  end
+
+  def test_capture_exception_tracks_frozen_exception_in_request_context
+    stub_request(:post, URL).to_return(status: 202, body: "{}")
+    err = RuntimeError.new("boom")
+    err.freeze
+
+    Tend::RequestContext.with_env({}) do
+      Tend.capture_exception(err)
+      assert Tend::RequestContext.captured?(err)
+    end
+  end
 end

@@ -1,5 +1,6 @@
 require "tend/version"
 require "tend/configuration"
+require "tend/request_context"
 require "tend/payload_builder"
 require "tend/transport"
 require "tend/middleware"
@@ -40,13 +41,22 @@ module Tend
       Thread.current[:tend_user] = prior
     end
 
-    def capture_exception(exception, extra: {}, env: nil)
+    def capture_exception(exception, extra: {}, env: nil, rails_error: nil)
       return unless configuration.valid?
       return if ignored?(exception)
-      payload = PayloadBuilder.from_exception(exception, configuration: configuration, extra: extra, env: env)
+
+      payload = PayloadBuilder.from_exception(
+        exception,
+        configuration: configuration,
+        extra: extra,
+        env: env,
+        rails_error: rails_error
+      )
       payload = configuration.before_send.call(payload) if configuration.before_send
       return if payload.nil?
+
       Transport.instance.enqueue(payload)
+      RequestContext.mark_captured(exception)
     rescue StandardError => e
       configuration.logger&.warn("Tend: capture_exception failed: #{e.class}: #{e.message}")
       nil

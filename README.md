@@ -6,7 +6,7 @@ Ruby SDK for [Tend](https://tend.justinpaulson.com) error capture. First-party R
 
 ```ruby
 # Gemfile
-gem "tend", git: "https://github.com/justinpaulson/tend-ruby"
+gem "tend", git: "https://github.com/justinpaulson/tend-ruby", ref: "v0.3.0"
 ```
 
 ## Configure (Rails)
@@ -37,6 +37,28 @@ end
 
 Tend.capture_message("payment partial failure", level: "warning", extra: { order_id: 42 })
 ```
+
+## Rich error metadata
+
+Exception events include the original top-level Tend fields plus a bounded `context`
+object. `stack_trace` remains the only full backtrace field. The context can include:
+
+- `request`: method, path, filtered query string, URL, request ID, user agent,
+  referer, and remote IP.
+- `route`: Rails controller and action when available.
+- `params`: filtered request parameters.
+- `rails`: Rails.error metadata for unhandled reports, including severity,
+  source, and a filtered copy of the Rails.error context.
+- `runtime`: Ruby, Rails/Rack when loaded, process, and thread details.
+- `error`: exception class, message, backtrace presence/line count, and bounded
+  cause-chain summaries.
+
+When Rails request filtering is available, Tend uses Rails' filtered parameters and
+parameter filter. Outside Rails, Tend recursively redacts password, token, secret,
+key, auth, cookie, session, and csrf-like fields.
+
+`before_send` receives the full payload, including `context`, so you can make a
+final redaction pass or return `nil` to drop the event.
 
 ## User attribution
 
@@ -81,6 +103,7 @@ Extras passed to `set_user`/`with_user` are included in the user object as-is â€
 | `ignored_exceptions` | Common Rails noise | Class names matched against ancestor chain. |
 | `logger` | `Rails.logger` or `Logger.new($stdout)` | SDK warnings go here. |
 | `user` | `nil` | Process-wide user hash sent with every event. Prefer `Tend.set_user` / `Tend.with_user`. |
+| `filtered_parameters` | `nil` | Optional parameter filter override. Defaults to Rails filters when available, otherwise the SDK denylist. |
 
 ## Non-Rails Rack apps
 

@@ -13,7 +13,8 @@ module Tend
     ].freeze
 
     attr_accessor :ingest_token, :ingest_url, :release, :environment,
-                  :tags, :before_send, :ignored_exceptions, :logger, :enabled, :user
+                  :tags, :before_send, :ignored_exceptions, :logger, :enabled,
+                  :user, :filtered_parameters
 
     def initialize
       @ingest_token = nil
@@ -26,6 +27,7 @@ module Tend
       @logger = default_logger
       @enabled = true
       @user = nil
+      @filtered_parameters = nil
     end
 
     def valid?

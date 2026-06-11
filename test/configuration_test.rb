@@ -15,6 +15,7 @@ class ConfigurationTest < Minitest::Test
     assert_kind_of Proc, cfg.before_send
     assert_equal({ a: 1 }, cfg.before_send.call({ a: 1 }))
     assert_equal true, cfg.enabled
+    assert_nil cfg.filtered_parameters
     refute cfg.valid?, "no token => invalid"
   end
 

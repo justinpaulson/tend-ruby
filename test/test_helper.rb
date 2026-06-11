@@ -14,6 +14,7 @@ module TendTestHelpers
     Tend::Transport.reset!
     Tend::Transport.synchronous = true
     Thread.current[:tend_user] = nil
+    Tend::RequestContext.clear! if defined?(Tend::RequestContext)
     Tend.configure do |c|
       c.ingest_token = token
       c.logger = logger || Logger.new(StringIO.new)
@@ -26,6 +27,7 @@ module TendTestHelpers
     Tend::Transport.synchronous = false
     Tend.reset_configuration!
     Thread.current[:tend_user] = nil
+    Tend::RequestContext.clear! if defined?(Tend::RequestContext)
     super
   end
 end

@@ -5,10 +5,16 @@ module Tend
     end
 
     def call(env)
-      @app.call(env)
-    rescue Exception => e # rubocop:disable Lint/RescueException
-      Tend.capture_exception(e, env: env) unless Tend.ignored?(e)
-      raise
+      Tend::RequestContext.with_env(env) do
+        begin
+          @app.call(env)
+        rescue Exception => e # rubocop:disable Lint/RescueException
+          unless Tend.ignored?(e) || Tend::RequestContext.captured?(e)
+            Tend.capture_exception(e, env: env)
+          end
+          raise
+        end
+      end
     end
   end
 end
