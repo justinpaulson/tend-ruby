@@ -219,7 +219,7 @@ class PayloadBuilderTest < Minitest::Test
     assert_equal "job-1", payload.dig(:context, "rails_error", "context", "job_id")
     assert_equal "[FILTERED]", payload.dig(:context, "rails_error", "context", "token")
     assert_equal "job-1", payload[:tags]["job_id"]
-    assert_equal "tag-secret", payload[:tags]["token"]
+    assert_equal "[FILTERED]", payload[:tags]["token"]
   end
 
   def test_exception_cause_summaries_are_bounded

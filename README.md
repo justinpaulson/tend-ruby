@@ -6,7 +6,7 @@ Ruby SDK for [Tend](https://tend.justinpaulson.com) error capture. First-party R
 
 ```ruby
 # Gemfile
-gem "tend", git: "https://github.com/justinpaulson/tend-ruby", ref: "v0.3.0"
+gem "tend", git: "https://github.com/justinpaulson/tend-ruby", ref: "v0.3.1"
 ```
 
 ## Configure (Rails)
@@ -43,19 +43,18 @@ Tend.capture_message("payment partial failure", level: "warning", extra: { order
 Exception events include the original top-level Tend fields plus a bounded `context`
 object. `stack_trace` remains the only full backtrace field. The context can include:
 
-- `request`: method, path, filtered query string, URL, request ID, user agent,
-  referer, and remote IP.
-- `route`: Rails controller and action when available.
+- `request`: method, path, filtered path/URL when Rails provides it, host,
+  scheme, request ID, user agent, referer, remote IP, and content type.
+- `route`: Rails controller, action, and route pattern when available.
 - `params`: filtered request parameters.
-- `rails`: Rails.error metadata for unhandled reports, including severity,
+- `rails_error`: Rails.error metadata for unhandled reports, including severity,
   source, and a filtered copy of the Rails.error context.
-- `runtime`: Ruby, Rails/Rack when loaded, process, and thread details.
-- `error`: exception class, message, backtrace presence/line count, and bounded
-  cause-chain summaries.
+- `runtime`: Ruby, Rails/Rack when loaded, process, and Tend SDK details.
+- `exception`: bounded cause-chain summaries with class, message, and top frame.
 
 When Rails request filtering is available, Tend uses Rails' filtered parameters and
 parameter filter. Outside Rails, Tend recursively redacts password, token, secret,
-key, auth, cookie, session, and csrf-like fields.
+key, auth, cookie, session, and csrf-like fields with `[FILTERED]`.
 
 `before_send` receives the full payload, including `context`, so you can make a
 final redaction pass or return `nil` to drop the event.

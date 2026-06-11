@@ -60,9 +60,11 @@ module Tend
       merged = {}
       rack_tag_values = env ? stringify(rack_tags(env)) : {}
 
-      merged.merge!(stringify(configuration.tags)) if configuration.tags.is_a?(Hash)
+      if configuration.tags.is_a?(Hash)
+        merged.merge!(stringify(filter_tag_hash(configuration.tags, env)))
+      end
       merged.merge!(rack_tag_values)
-      merged.merge!(stringify(extra)) if extra.is_a?(Hash)
+      merged.merge!(stringify(filter_tag_hash(extra, env))) if extra.is_a?(Hash)
       rack_tag_values.each { |key, value| merged[key] = value if RESERVED_RACK_TAGS.include?(key) }
 
       if merged.size > TAGS_KEY_LIMIT
@@ -88,6 +90,10 @@ module Tend
       end
 
       trimmed
+    end
+
+    def filter_tag_hash(hash, env)
+      filter_value(hash, env, action_dispatch_request(env))
     end
 
     def rack_tags(env)

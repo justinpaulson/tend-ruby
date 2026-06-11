@@ -25,7 +25,7 @@ class ErrorSubscriberTest < Minitest::Test
       body = JSON.parse(req.body)
       assert_equal "boom", body["message"]
       assert_equal "bar", body["tags"]["foo"]
-      assert_equal "secret", body["tags"]["token"]
+      assert_equal "[FILTERED]", body["tags"]["token"]
       assert_equal "POST", body["tags"]["method"]
       assert_equal "/jobs", body["tags"]["path"]
       assert_equal "req-456", body["tags"]["request_id"]
