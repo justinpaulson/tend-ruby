@@ -18,11 +18,10 @@ module Tend
 
     module_function
 
-    def from_exception(exception, configuration:, extra: {}, env: nil, rails_error: nil, context: nil, handled: nil, severity: nil, source: nil, level: "error")
-      rails_error ||= { handled: handled, severity: severity, source: source, context: context } if handled || severity || source
+    def from_exception(exception, configuration:, extra: {}, env: nil, rails_error: nil)
       base = {
         source: "backend",
-        level: level,
+        level: "error",
         message: truncate_bytes(exception.message.to_s, MESSAGE_BYTE_LIMIT),
         exception_class: exception.class.name,
         stack_trace: truncate_bytes(Array(exception.backtrace).join("\n"), STACK_TRACE_BYTE_LIMIT),
@@ -34,13 +33,7 @@ module Tend
         user_agent: env ? env["HTTP_USER_AGENT"] : nil,
         user: resolve_user(configuration),
         tags: build_tags(configuration: configuration, extra: extra, env: env),
-        context: build_context(
-          exception,
-          configuration: configuration,
-          env: env,
-          rails_error: rails_error,
-          custom_context: rails_error ? nil : context
-        )
+        context: build_context(exception, env: env, rails_error: rails_error)
       }
       base.compact
     end
@@ -55,7 +48,6 @@ module Tend
         environment: configuration.environment,
         sdk_version: "tend-ruby/#{Tend::VERSION}",
         user: resolve_user(configuration),
-        context: normalize_context(runtime: build_runtime_context),
         tags: build_tags(configuration: configuration, extra: extra, env: nil)
       }.compact
     end
@@ -108,17 +100,16 @@ module Tend
       }.compact
     end
 
-    def build_context(exception, configuration:, env:, rails_error:, custom_context:)
+    def build_context(exception, env:, rails_error:)
       request = action_dispatch_request(env)
       context = {
         request: build_request_context(env, request),
         route: build_route_context(env, request),
-        params: build_params_context(env, request, configuration),
-        rails: build_rails_error_context(rails_error, env, request, configuration),
+        params: build_params_context(env, request),
+        rails_error: build_rails_error_context(rails_error, env, request),
         runtime: build_runtime_context,
-        error: build_exception_context(exception)
+        exception: build_exception_context(exception)
       }.compact
-      context = custom_context.merge(context) if custom_context.is_a?(Hash)
 
       normalize_context(context)
     end
@@ -137,7 +128,6 @@ module Tend
       {
         method: request_value(request, :request_method) || env["REQUEST_METHOD"],
         path: request_value(request, :path) || env["PATH_INFO"],
-        query_string: filtered_query_string(env),
         filtered_path: request_value(request, :filtered_path),
         filtered_url: request_value(request, :filtered_url),
         host: request_value(request, :host) || env["HTTP_HOST"] || env["SERVER_NAME"],
@@ -170,19 +160,19 @@ module Tend
       route.empty? ? nil : route
     end
 
-    def build_params_context(env, request, configuration)
+    def build_params_context(env, request)
       return nil unless env
 
       filtered = request_value(request, :filtered_parameters)
       if filtered
         params = hash_value(filtered) || filtered
-        return filter_value(params, env, request, configuration) unless params.respond_to?(:empty?) && params.empty?
+        return fallback_filter(params) unless params.respond_to?(:empty?) && params.empty?
       end
 
       params = fallback_params(env)
       return nil if params.empty?
 
-      filter_value(params, env, request, configuration)
+      filter_value(params, env, request)
     end
 
     def fallback_params(env)
@@ -222,7 +212,7 @@ module Tend
       {}
     end
 
-    def build_rails_error_context(rails_error, env, request, configuration)
+    def build_rails_error_context(rails_error, env, request)
       return nil unless rails_error.is_a?(Hash)
 
       metadata = {
@@ -232,7 +222,7 @@ module Tend
       }.compact
 
       unless rails_error[:context].nil?
-        metadata[:context] = filter_value(rails_error[:context], env, request, configuration)
+        metadata[:context] = filter_value(rails_error[:context], env, request)
       end
 
       metadata
@@ -251,23 +241,18 @@ module Tend
     end
 
     def build_exception_context(exception)
-      backtrace = Array(exception.backtrace)
       {
-        class: exception.class.name,
-        message: truncate_bytes(exception.message.to_s, MESSAGE_BYTE_LIMIT),
-        backtrace_present: !backtrace.empty?,
-        backtrace_line_count: backtrace.length,
-        cause_chain: cause_summaries(exception)
-      }.compact
+        causes: cause_summaries(exception)
+      }
     end
 
     def cause_summaries(exception)
       summaries = []
-      seen = {}
+      seen = {}.compare_by_identity
       current = exception.respond_to?(:cause) ? exception.cause : nil
 
-      while current && !seen[current.object_id] && summaries.length < CONTEXT_CAUSE_LIMIT
-        seen[current.object_id] = true
+      while current && !seen.key?(current) && summaries.length < CONTEXT_CAUSE_LIMIT
+        seen[current] = true
         summaries << {
           class: current.class.name,
           message: truncate_bytes(current.message.to_s, MESSAGE_BYTE_LIMIT),
@@ -296,22 +281,10 @@ module Tend
         ":#{port}"
       end
       path = env["PATH_INFO"].to_s
-      qs = filtered_query_string(env).to_s
+      qs = env["QUERY_STRING"].to_s
       url = "#{scheme}://#{host}#{port_part}#{path}"
       url += "?#{qs}" unless qs.empty?
       url[0, URL_LIMIT]
-    end
-
-    def filtered_query_string(env)
-      query_string = env && env["QUERY_STRING"].to_s
-      return nil if query_string.to_s.empty?
-
-      params = fallback_filter(parse_query_string(query_string))
-      return query_string if params.empty?
-
-      URI.encode_www_form(params)
-    rescue StandardError
-      query_string.match?(SENSITIVE_KEY_PATTERN) ? FILTERED_VALUE : truncate_bytes(query_string, URL_LIMIT)
     end
 
     def request_value(request, method_name)
@@ -334,8 +307,8 @@ module Tend
       nil
     end
 
-    def filter_value(value, env, request, configuration)
-      filter = rails_parameter_filter(env, request, configuration)
+    def filter_value(value, env, request)
+      filter = rails_parameter_filter(env, request)
       if filter
         filtered = filter_with_rails(filter, value)
         return fallback_filter(filtered) unless filtered.nil?
@@ -344,10 +317,9 @@ module Tend
       fallback_filter(value)
     end
 
-    def rails_parameter_filter(env, request, configuration)
+    def rails_parameter_filter(env, request)
       filter = request_value(request, :parameter_filter)
       filter ||= env && env["action_dispatch.parameter_filter"]
-      filter ||= configuration.filtered_parameters if configuration.respond_to?(:filtered_parameters) && configuration.filtered_parameters
       return filter if filter.respond_to?(:filter)
 
       if filter.is_a?(Array) && defined?(::ActiveSupport::ParameterFilter)
@@ -406,6 +378,7 @@ module Tend
     end
 
     def normalize_context(value, depth = 0, seen = {})
+      seen = seen.compare_by_identity unless seen.compare_by_identity?
       return "[Truncated]" if depth >= CONTEXT_DEPTH_LIMIT
 
       case value
@@ -431,25 +404,25 @@ module Tend
     end
 
     def normalize_hash(value, depth, seen)
-      return "[Circular]" if seen[value.object_id]
+      return "[Circular]" if seen.key?(value)
 
-      seen[value.object_id] = true
+      seen[value] = true
       normalized = {}
       value.first(CONTEXT_HASH_KEY_LIMIT).each do |key, child|
         normalized[normalize_context_key(key)] = normalize_context(child, depth + 1, seen)
       end
-      seen.delete(value.object_id)
+      seen.delete(value)
       normalized
     end
 
     def normalize_array(value, depth, seen)
-      return "[Circular]" if seen[value.object_id]
+      return "[Circular]" if seen.key?(value)
 
-      seen[value.object_id] = true
+      seen[value] = true
       normalized = value.first(CONTEXT_ARRAY_LIMIT).map do |child|
         normalize_context(child, depth + 1, seen)
       end
-      seen.delete(value.object_id)
+      seen.delete(value)
       normalized
     end
 
@@ -463,7 +436,7 @@ module Tend
         next if value.nil?
 
         key = key.to_s
-        out[key] = sensitive_key?(key) ? FILTERED_VALUE : (value.is_a?(String) ? value : value.to_s)
+        out[key] = value.is_a?(String) ? value : value.to_s
       end
       out
     end

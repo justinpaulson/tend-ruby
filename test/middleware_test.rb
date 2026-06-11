@@ -44,7 +44,7 @@ class MiddlewareTest < Minitest::Test
 
   def test_request_context_visible_and_cleaned_up_on_success
     observed_env = nil
-    inner_app = lambda do |env|
+    inner_app = lambda do |_env|
       observed_env = Tend::RequestContext.current_env
       [200, {}, ["ok"]]
     end

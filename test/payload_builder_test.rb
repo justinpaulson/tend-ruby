@@ -18,8 +18,7 @@ class PayloadBuilderTest < Minitest::Test
     assert payload[:occurred_at]
     assert_match(%r{tend-ruby/}, payload[:sdk_version])
     assert payload.dig(:context, "runtime", "ruby_version")
-    assert_equal "RuntimeError", payload.dig(:context, "error", "class")
-    assert_equal [], payload.dig(:context, "error", "cause_chain")
+    assert_equal [], payload.dig(:context, "exception", "causes")
   end
 
   def test_from_exception_nil_backtrace
@@ -86,7 +85,7 @@ class PayloadBuilderTest < Minitest::Test
     assert_equal "req-123", payload[:tags]["request_id"]
   end
 
-  def test_url_construction_filters_sensitive_top_level_url
+  def test_url_construction_preserves_original_top_level_url
     env = {
       "rack.url_scheme" => "https",
       "HTTP_HOST" => "example.com",
@@ -96,7 +95,7 @@ class PayloadBuilderTest < Minitest::Test
     }
     e = build_exception
     payload = Tend::PayloadBuilder.from_exception(e, configuration: Tend.configuration, extra: {}, env: env)
-    assert_equal "https://example.com/users?id=1&token=%5BFILTERED%5D", payload[:url]
+    assert_equal "https://example.com/users?id=1&token=raw", payload[:url]
   end
 
   def test_context_includes_request_route_params_runtime_and_exception_metadata
@@ -133,7 +132,7 @@ class PayloadBuilderTest < Minitest::Test
     assert_equal "Justin", context.dig("params", "name")
     assert_equal "[FILTERED]", context.dig("params", "password")
     assert_equal "tend-ruby/#{Tend::VERSION}", context.dig("runtime", "sdk_version")
-    assert_equal [], context.dig("error", "cause_chain")
+    assert_equal [], context.dig("exception", "causes")
   end
 
   def test_uses_rails_request_filtered_parameters_when_present
@@ -177,8 +176,8 @@ class PayloadBuilderTest < Minitest::Test
     assert_equal "[FILTERED]", payload.dig(:context, "params", "password")
     assert_equal "[FILTERED]", payload.dig(:context, "params", "custom_secret")
     assert_equal "1", payload.dig(:context, "params", "safe")
-    assert_equal "[FILTERED]", payload.dig(:context, "rails", "context", "custom_secret")
-    assert_equal "ok", payload.dig(:context, "rails", "context", "safe")
+    assert_equal "[FILTERED]", payload.dig(:context, "rails_error", "context", "custom_secret")
+    assert_equal "ok", payload.dig(:context, "rails_error", "context", "safe")
   end
 
   def test_fallback_filter_catches_nested_sensitive_fields_and_does_not_mutate
@@ -214,26 +213,13 @@ class PayloadBuilderTest < Minitest::Test
       }
     )
 
-    assert_equal false, payload.dig(:context, "rails", "handled")
-    assert_equal "error", payload.dig(:context, "rails", "severity")
-    assert_equal "rails", payload.dig(:context, "rails", "source")
-    assert_equal "job-1", payload.dig(:context, "rails", "context", "job_id")
-    assert_equal "[FILTERED]", payload.dig(:context, "rails", "context", "token")
+    assert_equal false, payload.dig(:context, "rails_error", "handled")
+    assert_equal "error", payload.dig(:context, "rails_error", "severity")
+    assert_equal "rails", payload.dig(:context, "rails_error", "source")
+    assert_equal "job-1", payload.dig(:context, "rails_error", "context", "job_id")
+    assert_equal "[FILTERED]", payload.dig(:context, "rails_error", "context", "token")
     assert_equal "job-1", payload[:tags]["job_id"]
-    assert_equal "[FILTERED]", payload[:tags]["token"]
-  end
-
-  def test_custom_context_cannot_override_sdk_sections
-    payload = Tend::PayloadBuilder.from_exception(
-      build_exception,
-      configuration: Tend.configuration,
-      extra: {},
-      env: nil,
-      context: { "error" => { "class" => "Fake" }, "feature" => "checkout" }
-    )
-
-    assert_equal "RuntimeError", payload.dig(:context, "error", "class")
-    assert_equal "checkout", payload.dig(:context, "feature")
+    assert_equal "tag-secret", payload[:tags]["token"]
   end
 
   def test_exception_cause_summaries_are_bounded
@@ -246,7 +232,7 @@ class PayloadBuilderTest < Minitest::Test
     e.define_singleton_method(:cause) { child }
 
     payload = Tend::PayloadBuilder.from_exception(e, configuration: Tend.configuration, extra: {}, env: nil)
-    causes = payload.dig(:context, "error", "cause_chain")
+    causes = payload.dig(:context, "exception", "causes")
 
     assert_equal "RuntimeError", causes[0]["class"]
     assert_equal "child", causes[0]["message"]
@@ -272,7 +258,7 @@ class PayloadBuilderTest < Minitest::Test
       env: nil,
       rails_error: { handled: false, context: rails_context }
     )
-    context = payload.dig(:context, "rails", "context")
+    context = payload.dig(:context, "rails_error", "context")
 
     assert_operator context["large_string"].bytesize, :<=, 2048
     assert_equal 20, context["large_array"].length
@@ -280,14 +266,14 @@ class PayloadBuilderTest < Minitest::Test
     assert_equal "[Truncated]", context.dig("deep", "a", "b")
   end
 
-  def test_from_message_includes_runtime_context
+  def test_from_message_does_not_include_rich_context
     payload = Tend::PayloadBuilder.from_message("hello", level: "warning", configuration: Tend.configuration, extra: { foo: "bar" })
     assert_equal "backend", payload[:source]
     assert_equal "warning", payload[:level]
     assert_equal "hello", payload[:message]
     refute payload.key?(:exception_class)
     refute payload.key?(:stack_trace)
-    assert payload.dig(:context, "runtime", "ruby_version")
+    refute payload.key?(:context)
     assert_equal "bar", payload[:tags]["foo"]
   end
 

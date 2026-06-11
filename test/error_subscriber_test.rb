@@ -24,19 +24,19 @@ class ErrorSubscriberTest < Minitest::Test
     assert_requested(:post, URL) do |req|
       body = JSON.parse(req.body)
       assert_equal "boom", body["message"]
-      refute body["tags"].key?("foo")
-      refute body["tags"].key?("token")
+      assert_equal "bar", body["tags"]["foo"]
+      assert_equal "secret", body["tags"]["token"]
       assert_equal "POST", body["tags"]["method"]
       assert_equal "/jobs", body["tags"]["path"]
       assert_equal "req-456", body["tags"]["request_id"]
       assert_equal "POST", body.dig("context", "request", "method")
       assert_equal "/jobs", body.dig("context", "request", "path")
       assert_equal "req-456", body.dig("context", "request", "request_id")
-      assert_equal false, body.dig("context", "rails", "handled")
-      assert_equal "error", body.dig("context", "rails", "severity")
-      assert_equal "rails", body.dig("context", "rails", "source")
-      assert_equal "bar", body.dig("context", "rails", "context", "foo")
-      assert_equal "[FILTERED]", body.dig("context", "rails", "context", "token")
+      assert_equal false, body.dig("context", "rails_error", "handled")
+      assert_equal "error", body.dig("context", "rails_error", "severity")
+      assert_equal "rails", body.dig("context", "rails_error", "source")
+      assert_equal "bar", body.dig("context", "rails_error", "context", "foo")
+      assert_equal "[FILTERED]", body.dig("context", "rails_error", "context", "token")
       true
     end
   end

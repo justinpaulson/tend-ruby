@@ -10,7 +10,7 @@ module Tend
       captured = previous && previous[:captured_exception_ids]
       Thread.current[THREAD_KEY] = {
         env: env,
-        captured_exception_ids: captured || {}
+        captured_exception_ids: captured || {}.compare_by_identity
       }
       yield
     ensure
@@ -28,24 +28,24 @@ module Tend
 
     def captured?(exception)
       exception_chain(exception).any? do |chain_exception|
-        captured_exception_ids.key?(chain_exception.object_id) || marked?(chain_exception)
+        captured_exception_ids.key?(chain_exception) || marked?(chain_exception)
       end
     end
 
     def mark_captured(exception)
       exception_chain(exception).each do |chain_exception|
-        captured_exception_ids[chain_exception.object_id] = true
+        captured_exception_ids[chain_exception] = true
         mark_exception(chain_exception)
       end
     end
 
     def exception_chain(exception)
       chain = []
-      seen = {}
+      seen = {}.compare_by_identity
       current = exception
 
-      while current && !seen[current.object_id]
-        seen[current.object_id] = true
+      while current && !seen.key?(current)
+        seen[current] = true
         chain << current
         current = current.respond_to?(:cause) ? current.cause : nil
       end
@@ -57,7 +57,7 @@ module Tend
       state = Thread.current[THREAD_KEY]
       return {} unless state
 
-      state[:captured_exception_ids] ||= {}
+      state[:captured_exception_ids] ||= {}.compare_by_identity
     end
 
     def marked?(exception)
